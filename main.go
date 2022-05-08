@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 )
 
@@ -74,7 +77,7 @@ func (l *Lexer) NextToken() Token {
 
 func (l *Lexer) readNumber() string {
 	position := l.position
-	for isDigit(l.input[l.position]) {
+	for l.position < len(l.input) && isDigit(l.input[l.position]) {
 		l.position++
 	}
 	return l.input[position:l.position]
@@ -164,14 +167,15 @@ func (p *Parser) nextToken() {
 	p.peekToken = p.lexer.NextToken()
 }
 
-func (p *Parser) ParseProgram() {
+func (p *Parser) ParseProgram() Expression {
+	var expression Expression
 	for p.currentToken.Type != EOF {
-		exp := p.parseExpression(LOWEST)
-		if exp != nil {
-			fmt.Println(exp)
+		expression = p.parseExpression(LOWEST)
+		if expression != nil {
+			return expression
 		}
-		p.nextToken()
 	}
+	return expression
 }
 
 func (p *Parser) parseExpression(precedence int) Expression {
@@ -196,7 +200,7 @@ func (p *Parser) parseExpression(precedence int) Expression {
 		leftExp = expression
 	}
 
-	for p.peekToken.Literal != SEMICOLON && precedence < p.peekPrecedence() {
+	for p.peekToken.Literal != SEMICOLON && p.peekToken.Literal != EOF && precedence < p.peekPrecedence() {
 		peekTokenType := p.peekToken.Type
 		p.nextToken()
 		switch peekTokenType {
@@ -250,12 +254,24 @@ func (p *Parser) peekPrecedence() int {
 	return LOWEST
 }
 
+func Start(in io.Reader, out io.Writer) {
+	scanner := bufio.NewScanner(in)
+
+	for {
+		fmt.Printf(">> ")
+		scanned := scanner.Scan()
+		if !scanned {
+			return
+		}
+
+		line := scanner.Text()
+		lexer := Lexer{input: line, position: 0}
+		parser := New(&lexer)
+		ast := parser.ParseProgram()
+		fmt.Printf("%+v\n", ast)
+	}
+}
+
 func main() {
-	input := "1 + -2 * 3;"
-	lexer := Lexer{input: input, position: 0}
-
-	fmt.Println(input)
-
-	parser := New(&lexer)
-	parser.ParseProgram()
+	Start(os.Stdin, os.Stdout)
 }
