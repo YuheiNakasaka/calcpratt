@@ -1,3 +1,3 @@
-module tinypratt
+module calcpratt
 
 go 1.18
