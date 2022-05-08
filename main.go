@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 type TokenType string
 
@@ -81,15 +84,178 @@ func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
 }
 
+const (
+	_ int = iota
+	LOWEST
+	SUM     // +
+	PRODUCT // *
+	PREFIX  // -X or !X
+)
+
+var precedences = map[TokenType]int{
+	PLUS:     SUM,
+	MINUS:    SUM,
+	SLASH:    PRODUCT,
+	ASTERISK: PRODUCT,
+}
+
+type Expression interface {
+	TokenLiteral() string
+	String() string
+}
+
+type IntegerLiteral struct {
+	Token Token
+	Value int64
+}
+
+func (i *IntegerLiteral) TokenLiteral() string {
+	return i.Token.Literal
+}
+
+func (i *IntegerLiteral) String() string {
+	return i.Token.Literal
+}
+
+type PrefixExpression struct {
+	Token    Token
+	Operator string
+	Right    Expression
+}
+
+func (pe *PrefixExpression) TokenLiteral() string {
+	return pe.Token.Literal
+}
+
+func (pe *PrefixExpression) String() string {
+	return fmt.Sprintf("(%s%s)", pe.Operator, pe.Right.String())
+}
+
+type InfixExpression struct {
+	Token    Token
+	Left     Expression
+	Operator string
+	Right    Expression
+}
+
+func (ie *InfixExpression) TokenLiteral() string {
+	return ie.Token.Literal
+}
+
+func (ie *InfixExpression) String() string {
+	return fmt.Sprintf("(%s %s %s)", ie.Left, ie.Operator, ie.Right.String())
+}
+
+type Parser struct {
+	lexer        *Lexer
+	currentToken Token
+	peekToken    Token
+}
+
+func New(l *Lexer) *Parser {
+	p := &Parser{lexer: l}
+	p.nextToken()
+	p.nextToken()
+	return p
+}
+
+func (p *Parser) nextToken() {
+	p.currentToken = p.peekToken
+	p.peekToken = p.lexer.NextToken()
+}
+
+func (p *Parser) ParseProgram() {
+	for p.currentToken.Type != EOF {
+		exp := p.parseExpression(LOWEST)
+		if exp != nil {
+			fmt.Println(exp)
+		}
+		p.nextToken()
+	}
+}
+
+func (p *Parser) parseExpression(precedence int) Expression {
+	var leftExp Expression
+
+	switch p.currentToken.Type {
+	case INT:
+		lit := &IntegerLiteral{Token: p.currentToken}
+		value, err := strconv.ParseInt(p.currentToken.Literal, 0, 64)
+		if err != nil {
+			panic(err)
+		}
+		lit.Value = value
+		leftExp = lit
+	case MINUS:
+		expression := &PrefixExpression{
+			Token:    p.currentToken,
+			Operator: p.currentToken.Literal,
+		}
+		p.nextToken()
+		expression.Right = p.parseExpression(PREFIX)
+		leftExp = expression
+	}
+
+	for p.peekToken.Literal != SEMICOLON && precedence < p.peekPrecedence() {
+		peekTokenType := p.peekToken.Type
+		p.nextToken()
+		switch peekTokenType {
+		case PLUS:
+			expression := &InfixExpression{
+				Token:    p.currentToken,
+				Operator: p.currentToken.Literal,
+				Left:     leftExp,
+			}
+			p.nextToken()
+			expression.Right = p.parseExpression(SUM)
+			leftExp = expression
+		case MINUS:
+			expression := &InfixExpression{
+				Token:    p.currentToken,
+				Operator: p.currentToken.Literal,
+				Left:     leftExp,
+			}
+			p.nextToken()
+			expression.Right = p.parseExpression(SUM)
+			leftExp = expression
+		case ASTERISK:
+			expression := &InfixExpression{
+				Token:    p.currentToken,
+				Operator: p.currentToken.Literal,
+				Left:     leftExp,
+			}
+			p.nextToken()
+			expression.Right = p.parseExpression(PRODUCT)
+			leftExp = expression
+		case SLASH:
+			expression := &InfixExpression{
+				Token:    p.currentToken,
+				Operator: p.currentToken.Literal,
+				Left:     leftExp,
+			}
+			p.nextToken()
+			expression.Right = p.parseExpression(PRODUCT)
+			leftExp = expression
+		}
+	}
+
+	return leftExp
+}
+
+func (p *Parser) peekPrecedence() int {
+	if p, ok := precedences[p.peekToken.Type]; ok {
+		return p
+	}
+
+	return LOWEST
+}
+
 func main() {
-	input := "1 + 2 * 3;"
+	input := "1 + -2 * 3;"
 	lexer := Lexer{input: input, position: 0}
+
 	fmt.Println(input)
-	fmt.Println(lexer.NextToken())
-	fmt.Println(lexer.NextToken())
-	fmt.Println(lexer.NextToken())
-	fmt.Println(lexer.NextToken())
-	fmt.Println(lexer.NextToken())
-	fmt.Println(lexer.NextToken())
-	fmt.Println(lexer.NextToken())
+
+	parser := New(&lexer)
+	parser.ParseProgram()
 }
